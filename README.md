@@ -34,3 +34,24 @@ The node `fix_translator` converts [sensor_msgs/NavSatFix](http://docs.ros.org/a
 ```
 
 Only adjust the topic names after "to=" in each remap line.
+
+
+### how to use components (https://index.ros.org/doc/ros2/Tutorials/Composition/)
+
+#### standalone
+
+```
+ros2 component standalone gpsd_client gpsd_client::GPSDClientComponent
+```
+
+#### container
+
+in 1st terminal
+```
+ros2 run rclcpp_components component_container
+```
+
+in 2nd terminal
+```
+ros2 component load /ComponentManager gpsd_client gpsd_client::GPSDClientComponent
+```
