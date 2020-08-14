@@ -7,6 +7,15 @@
 
 #include <cmath>
 
+#include <chrono>
+#include <iostream>
+#include <memory>
+#include <utility>
+
+
+using namespace std::chrono_literals;
+
+
 namespace gpsd_client
 {
   class GPSDClientComponent : public rclcpp::Node
@@ -18,10 +27,15 @@ namespace gpsd_client
       use_gps_time_(true),
       check_fix_by_variance_(true),
       frame_id_("gps")
-    {}
+    {
+      start();
+      
+    }
 
     bool start()
     {
+      
+
       gps_fix_pub_ = create_publisher<gps_msgs::msg::GPSFix>("extended_fix", 1);
       navsatfix_pub_ = create_publisher<sensor_msgs::msg::NavSatFix>("fix", 1);
 
@@ -59,20 +73,31 @@ namespace gpsd_client
       }
 
       RCLCPP_INFO(this->get_logger(), "GPSd opened");
+
+      // Use a timer to schedule periodic message publishing.
+      timer_ = create_wall_timer(100ms, std::bind(&GPSDClientComponent::on_timer, this));
+
+      
+
       return true;
     }
 
     void step()
     {
-#if GPSD_API_MAJOR_VERSION >= 5
-      if (!gps_->waiting(1e6))
-        return;
+      timer_ = nullptr;
 
+#if GPSD_API_MAJOR_VERSION >= 5
+      if (!gps_->waiting(1e6)) {
+        step();
+        return;
+      }
       gps_data_t* p = gps_->read();
 #else
       gps_data_t *p = gps->poll();
 #endif
       process_data(p);
+      step();
+      //timer_ = create_wall_timer(10ms, std::bind(&GPSDClientComponent::on_timer, this));
     }
 
     void stop()
@@ -80,17 +105,26 @@ namespace gpsd_client
       // gpsmm doesn't have a close method? OK ...
     }
 
+  protected:
+    void on_timer()
+    {
+      step();
+    }
+
   private:
     void process_data(struct gps_data_t* p)
     {
-      if (p == nullptr)
+      if (p == nullptr) {
+        //RCLCPP_WARN(this->get_logger(), "no new data, aborting");
         return;
+      }
 
 #if GPSD_API_MAJOR_VERSION >= 9
       if (!p->online.tv_sec && !p->online.tv_nsec) {
 #else
       if (!p->online) {
 #endif
+        //RCLCPP_WARN(this->get_logger(), "no online.tv_sec, aborting");
         return;
       }
 
@@ -276,6 +310,8 @@ namespace gpsd_client
 
     rclcpp::Publisher<gps_msgs::msg::GPSFix>::SharedPtr gps_fix_pub_;
     rclcpp::Publisher<sensor_msgs::msg::NavSatFix>::SharedPtr navsatfix_pub_;
+
+    rclcpp::TimerBase::SharedPtr timer_;
 
     gpsmm* gps_;
 
